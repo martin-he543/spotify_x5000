@@ -2,11 +2,16 @@
 These are the 5000 most popular songs around March 2023 on Spotify.
 
 -> eda.ipynb : Find a rudimentary EDA, which may need some fixing.
+
 -> read_dataset.ipynb : Simple notebook to read the dataset.
+
 -> recommendations.ipynb : Several rudimentary recommendation systems, which need improvement.
+
 -> spectrogram.ipynb : Generate spectrograms for the songs.
+
 -> spotify_5000.ipynb : (Not for use) to generate a dataset from the 5000 top songs (of the full dataset).
 
+-> streamlit_app.py : To run, simply type in terminal (open in this folder): `streamlit run streamlit_app.py` and go to `localhost:8501` in your browser.
 
 ### Missing Data
 Beware of the following rows, which contain 'False' values:
