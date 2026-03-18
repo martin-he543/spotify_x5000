@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import os
 from wordcloud import WordCloud
+from pathlib import Path
 # plt is removed to avoid SessionInfo/thread-safety issues
 
 # Set page config
@@ -13,7 +14,7 @@ st.title("🎵 Multi-Modal Song Recommender")
 st.markdown("We combine **Sound Features** (Spectrograms) and **Lyric/Context Features** (NLP) for more accurate recommendations.")
 
 # Constants
-DATA_DIR = "/home/build/martin/spotify_x5000"
+DATA_DIR = Path(__file__).parent
 FEATURES_SPEC_PATH = os.path.join(DATA_DIR, "spectrogram_features.csv")
 FEATURES_NLP_PATH = os.path.join(DATA_DIR, "nlp_features.csv")
 METADATA_PATH = os.path.join(DATA_DIR, "spotify_5000.parquet")
