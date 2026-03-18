@@ -3,189 +3,225 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import os
+from wordcloud import WordCloud
+# plt is removed to avoid SessionInfo/thread-safety issues
 
-# --- Page Configuration ---
-st.set_page_config(
-    page_title="SpectroRecs | Audio Similarity",
-    page_icon="🎵",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# Set page config
+st.set_page_config(page_title="Spotify Ensemble Recommender", layout="wide")
 
-# --- Design System (Premium Aesthetics) ---
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+st.title("🎵 Multi-Modal Song Recommender")
+st.markdown("We combine **Sound Features** (Spectrograms) and **Lyric/Context Features** (NLP) for more accurate recommendations.")
 
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
+# Constants
+DATA_DIR = "/home/build/martin/spotify_x5000"
+FEATURES_SPEC_PATH = os.path.join(DATA_DIR, "spectrogram_features.csv")
+FEATURES_NLP_PATH = os.path.join(DATA_DIR, "nlp_features.csv")
+METADATA_PATH = os.path.join(DATA_DIR, "spotify_5000.parquet")
+COVERS_DIR = os.path.join(DATA_DIR, "data/covers")
+PREVIEWS_DIR = os.path.join(DATA_DIR, "data/previews")
 
-    .main {
-        background-color: #0e1117;
-        color: #ffffff;
-    }
+def show_wordcloud(text, title=None):
+    if not text or pd.isna(text) or len(text.strip()) == 0:
+        st.write("No lyrics available for word cloud.")
+        return
+    
+    wordcloud = WordCloud(
+        width=800, 
+        height=400, 
+        background_color='black',
+        colormap='viridis',
+        max_words=100
+    ).generate(text)
+    
+    # Using st.image instead of st.pyplot for stability and speed
+    st.image(wordcloud.to_array(), width='stretch', caption=title)
 
-    .stApp {
-        background: linear-gradient(135deg, #0e1117 0%, #1a1c23 100%);
-    }
-
-    /* Glassmorphic Card */
-    .song-card {
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 16px;
-        padding: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        transition: transform 0.3s ease, background 0.3s ease;
-        margin-bottom: 10px;
-    }
-
-    .song-card:hover {
-        transform: translateY(-5px);
-        background: rgba(255, 255, 255, 0.05);
-        border-color: #1DB954;
-    }
-
-    .similarity-badge {
-        background-color: #1DB954;
-        color: white;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: 800;
-        float: right;
-    }
-
-    .track-name {
-        font-size: 1.1rem;
-        font-weight: 600;
-        color: #ffffff;
-        margin-bottom: 4px;
-    }
-
-    .artist-name {
-        font-size: 0.9rem;
-        color: #b3b3b3;
-    }
-
-    h1, h2, h3 {
-        color: #ffffff !important;
-    }
-
-    /* Sidebar Styling */
-    .css-1d391kg {
-        background-color: #000000;
-    }
-
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-        width: 8px;
-    }
-    ::-webkit-scrollbar-track {
-        background: #0e1117;
-    }
-    ::-webkit-scrollbar-thumb {
-        background: #333;
-        border-radius: 10px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: #555;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# --- Data Loading (Cached) ---
 @st.cache_data
 def load_data():
-    features_path = '/home/build/martin/spotify_v2/spectrogram_features.parquet'
-    metadata_path = '/home/build/martin/spotify_v2/spotify_411k.parquet'
+    # Load metadata
+    metadata_df = pd.read_parquet(METADATA_PATH)
     
-    df_f = pd.read_parquet(features_path)
-    df_m = pd.read_parquet(metadata_path)
+    # Load spectrogram features
+    spec_df = pd.read_csv(FEATURES_SPEC_PATH)
     
-    # Merge
-    join_col = 'track_id' if 'track_id' in df_m.columns else 'id'
-    df = pd.merge(df_m, df_f, left_on=join_col, right_on='track_id', how='inner')
+    # Load NLP features
+    nlp_df = pd.read_csv(FEATURES_NLP_PATH)
     
-    # Filter columns to save memory
-    feature_cols = [c for c in df.columns if c.startswith('spec_feat_')]
-    meta_cols = ['track_id', 'track_name', 'artist_name', 'preview_url', 'album']
+    # Merge datasets
+    # We want to ensure all tracks have both features
+    df = pd.merge(metadata_df, spec_df, on="track_id", how="inner")
+    df = pd.merge(df, nlp_df, on="track_id", how="inner")
     
-    return df, feature_cols, meta_cols
+    # Prepare feature matrices
+    spec_cols = [col for col in df.columns if col.startswith('spec_feat_')]
+    nlp_cols = [col for col in df.columns if col.startswith('nlp_feat_')]
+    
+    spec_matrix = df[spec_cols].values
+    nlp_matrix = df[nlp_cols].values
+    
+    return df, spec_matrix, nlp_matrix
 
-df, feature_cols, meta_cols = load_data()
+try:
+    with st.spinner("Loading ensemble data..."):
+        df, spec_matrix, nlp_matrix = load_data()
+except Exception as e:
+    st.error(f"Error loading data: {e}")
+    st.stop()
 
-# --- App Header ---
-st.title("🎵 SpectroRecs")
-st.write("Discover music through audio DNA. We analyze spectrograms to find tracks that *sound* like your favorites.")
+# Sidebar - Configuration
+st.sidebar.header("Recommendation Settings")
 
-# --- Sidebar / Controls ---
-with st.sidebar:
-    st.image("https://www.gstatic.com/images/branding/product/2x/noto_music_128dp.png", width=80)
-    st.subheader("Selection")
-    
-    # Efficient Search
-    search_query = st.text_input("Search Artist or Song", "")
-    
-    if search_query:
-        search_results = df[
-            (df['track_name'].str.contains(search_query, case=False, na=False)) |
-            (df['artist_name'].str.contains(search_query, case=False, na=False))
-        ].head(100)
+# Ensemble weighting
+st.sidebar.markdown("### Ensemble Weights")
+nlp_weight = st.sidebar.slider(
+    "Lyrics & Context vs. Sound",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.5,
+    help="Higher values favor lyrics and semantic context. Lower values favor audio sound characteristics."
+)
+spec_weight = 1.0 - nlp_weight
+
+# Number of recommendations
+num_recs = st.sidebar.slider(
+    "Number of Recommendations",
+    min_value=10,
+    max_value=50,
+    value=10,
+    step=5
+)
+
+st.sidebar.divider()
+
+# Sidebar - Song Selection
+st.sidebar.header("Select a Song")
+df['display_name'] = df['track_name'].fillna('Unknown') + " - " + df['artist_name'].fillna('Unknown')
+song_options = df['display_name'].tolist()
+
+selected_song_name = st.sidebar.selectbox(
+    "Search for a song:",
+    options=song_options,
+    index=0
+)
+
+# Get selected song index and data
+selected_idx = song_options.index(selected_song_name)
+selected_song = df.iloc[selected_idx]
+
+# Display Selected Song Info
+st.header("Currently Selected")
+col1, col2 = st.columns([1, 4])
+
+with col1:
+    cover_path = os.path.join(COVERS_DIR, f"{selected_song['track_id']}.jpg")
+    if os.path.exists(cover_path):
+        st.image(cover_path, width='stretch')
     else:
-        search_results = df.head(100)
-        
-    options = {f"{r['track_name']} - {r['artist_name']}": r['track_id'] for _, r in search_results.iterrows()}
+        st.info("No cover available")
+
+with col2:
+    st.subheader(selected_song['track_name'])
+    st.write(f"**Artist:** {selected_song['artist_name']}")
+    st.write(f"**Album:** {selected_song['album']}")
     
-    selected_song_name = st.selectbox("Choose a track", options.keys())
-    selected_track_id = options[selected_song_name]
+    preview_path = os.path.join(PREVIEWS_DIR, f"{selected_song['track_id']}.mp3")
+    if os.path.exists(preview_path):
+        st.audio(preview_path)
+    else:
+        st.warning("Preview audio not found locally.")
 
-# --- Recommendation Logic ---
-def get_recs(tid, top_n=40):
-    target_idx = df.index[df['track_id'] == tid].tolist()[0]
-    target_vec = df[feature_cols].values[target_idx].reshape(1, -1)
+# Selected Song Metadata & Word Cloud
+with st.expander("🔍 View Selected Song Metadata & Lyrics Insights"):
+    mcol1, mcol2, mcol3 = st.columns(3)
     
-    # Dot product for speed on normalized features (assuming they might be)
-    # Cosine similarity for robustness
-    similarities = cosine_similarity(target_vec, df[feature_cols].values)[0]
+    # Metadata items
+    meta_to_drop = (
+        [col for col in df.columns if col.startswith('spec_feat_')] + 
+        [col for col in df.columns if col.startswith('nlp_feat_')] + 
+        ['display_name', 'combined_text', 'lyrics']
+    )
+    display_meta_sel = selected_song.drop(meta_to_drop, errors='ignore').to_dict()
+    meta_items_sel = list(display_meta_sel.items())
+    chunk_size_sel = (len(meta_items_sel) + 2) // 3
     
-    # Sort
-    idx_sorted = np.argsort(similarities)[::-1]
-    # Filter self
-    idx_sorted = [i for i in idx_sorted if df.iloc[i]['track_id'] != tid][:top_n]
+    for i, col in enumerate([mcol1, mcol2, mcol3]):
+        with col:
+            for k, v in meta_items_sel[i*chunk_size_sel : (i+1)*chunk_size_sel]:
+                st.markdown(f"**{k.replace('_', ' ').title()}:** {v}")
     
-    res = df.iloc[idx_sorted].copy()
-    res['score'] = similarities[idx_sorted]
-    return res
+    st.divider()
+    st.markdown("### ☁️ Lyrics Word Cloud")
+    show_wordcloud(selected_song.get('lyrics', ''))
 
-recs = get_recs(selected_track_id)
-
-# --- Display Content ---
-st.subheader(f"Top 40 Matches for '{selected_song_name}'")
-
-# Grid Layout
-cols_per_row = 2
-rows = len(recs) // cols_per_row + (1 if len(recs) % cols_per_row != 0 else 0)
-
-for i in range(rows):
-    cols = st.columns(cols_per_row)
-    for j in range(cols_per_row):
-        idx = i * cols_per_row + j
-        if idx < len(recs):
-            track = recs.iloc[idx]
-            with cols[j]:
-                st.markdown(f"""
-                <div class="song-card">
-                    <span class="similarity-badge">{track['score']:.1%}</span>
-                    <div class="track-name">{track['track_name']}</div>
-                    <div class="artist-name">{track['artist_name']}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                if pd.notna(track['preview_url']):
-                    st.audio(track['preview_url'], format="audio/mp3")
-                else:
-                    st.info("No audio preview available")
-
-# Footer
+# Recommendations Logic
 st.divider()
-st.caption("Powered by Spectrogram Feature Extraction & Cosine Similarity")
+st.header(f"Recommendations (Ensemble Score: {spec_weight:.0%} Sound, {nlp_weight:.0%} Lyrics)")
+
+# Calculate similarities for both
+selected_spec = spec_matrix[selected_idx].reshape(1, -1)
+selected_nlp = nlp_matrix[selected_idx].reshape(1, -1)
+
+spec_sims = cosine_similarity(selected_spec, spec_matrix).flatten()
+nlp_sims = cosine_similarity(selected_nlp, nlp_matrix).flatten()
+
+# Combine scores
+ensemble_sims = (spec_weight * spec_sims) + (nlp_weight * nlp_sims)
+
+# Get top N (including sample itself)
+top_indices = ensemble_sims.argsort()[::-1][1:num_recs+1]
+
+for idx in top_indices:
+    rec_song = df.iloc[idx]
+    score = ensemble_sims[idx]
+    s_score = spec_sims[idx]
+    n_score = nlp_sims[idx]
+    
+    # Recommendation UI Card
+    with st.container(border=True):
+        rcol1, rcol2 = st.columns([1, 4])
+        
+        with rcol1:
+            rec_cover_path = os.path.join(COVERS_DIR, f"{rec_song['track_id']}.jpg")
+            if os.path.exists(rec_cover_path):
+                st.image(rec_cover_path, width='stretch')
+            else:
+                st.info("No cover")
+        
+        with rcol2:
+            st.markdown(f"### {rec_song['track_name']}")
+            st.write(f"**Artist:** {rec_song['artist_name']} | **Score:** {score:.3f} (🔊 {s_score:.2f}, 📝 {n_score:.2f})")
+            
+            # Simplified Preview
+            rec_preview_path = os.path.join(PREVIEWS_DIR, f"{rec_song['track_id']}.mp3")
+            if os.path.exists(rec_preview_path):
+                # Small audio player
+                st.audio(rec_preview_path)
+        
+        # Metadata expander - Full width of the card
+        with st.expander("🔍 Details & Lyrics"):
+            # Metadata Grid
+            mcol1, mcol2, mcol3 = st.columns(3)
+            
+            # Clean up metadata
+            meta_to_drop = (
+                [col for col in df.columns if col.startswith('spec_feat_')] + 
+                [col for col in df.columns if col.startswith('nlp_feat_')] + 
+                ['display_name', 'combined_text', 'lyrics']
+            )
+            display_meta = rec_song.drop(meta_to_drop, errors='ignore').to_dict()
+            
+            # Helper to display metadata in columns
+            meta_items = list(display_meta.items())
+            chunk_size = (len(meta_items) + 2) // 3
+            
+            for i, col in enumerate([mcol1, mcol2, mcol3]):
+                with col:
+                    for k, v in meta_items[i*chunk_size : (i+1)*chunk_size]:
+                        st.markdown(f"**{k.replace('_', ' ').title()}:** {v}")
+            
+            st.divider()
+            
+            # Word Cloud Section
+            st.markdown("### ☁️ Lyrics Word Cloud")
+            lyrics_text = rec_song.get('lyrics', '')
+            show_wordcloud(lyrics_text)
