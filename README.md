@@ -1,13 +1,25 @@
 # Spotify Top 5000 Dataset
 These are the 5000 most popular songs around March 2023 on Spotify.
 
+-> album_art_features_v2.ipynb : A notebook to extract features from album art using a pre-trained model. The extracted features are saved in a Parquet file (called features_final.parquet). Requires extract_album_features.py to run.
+
 -> eda.ipynb : Find a rudimentary EDA, which may need some fixing.
+
+-> extract_album_features.py : A script to extract features from album art. The extracted features are saved in a Parquet file (called features_final.parquet).
+
+-> features_final.parquet: 400,000k+ songs with extracted features from album art.
+
+-> parquet_inspector.ipynb : A notebook to inspect the parquet files, with example usage and filtering.
 
 -> read_dataset.ipynb : Simple notebook to read the dataset.
 
 -> recommendations.ipynb : Several rudimentary recommendation systems, which need improvement.
 
 -> spectrogram.ipynb : Generate spectrograms for the songs.
+
+-> spectrogram_features.csv : A CSV file containing the extracted features from the spectrograms (only 5000 songs, not the full dataset).
+
+-> spectrogram_features_400k.parquet : A Parquet file containing the extracted features from the spectrograms for 400,000+ songs.
 
 -> spotify_5000.ipynb : (Not for use) to generate a dataset from the 5000 top songs (of the full dataset).
 
