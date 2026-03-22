@@ -9,6 +9,8 @@ These are the 5000 most popular songs around March 2023 on Spotify.
 
 -> features_final.parquet: 400,000k+ songs with extracted features from album art.
 
+-> nlp_features_v2.parquet : A Parquet file containing the extracted NLP features (768 dimensions + basic analysis) for 400,000+ songs.
+
 -> parquet_inspector.ipynb : A notebook to inspect the parquet files, with example usage and filtering.
 
 -> read_dataset.ipynb : Simple notebook to read the dataset.
